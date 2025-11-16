@@ -90,28 +90,27 @@ app.post('/api/cortex-agent', async (req, res) => {
             schema: schema || 'AGENTS'
         });
 
-        // Build conversation context
-        const conversationContext = conversation
-            ? conversation.map(msg => `${msg.role}: ${msg.content}`).join('\n')
-            : '';
+        // Build conversation context for better responses
+        let fullPrompt = message;
+        if (conversation && conversation.length > 0) {
+            // Include recent conversation history (last 5 messages)
+            const recentHistory = conversation.slice(-5)
+                .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+                .join('\n');
+            fullPrompt = `Previous conversation:\n${recentHistory}\n\nUser: ${message}\n\nAssistant:`;
+        }
 
         // Call Cortex Agent using Snowflake's CORTEX.COMPLETE function
-        // Adjust this query based on your specific Cortex Agent setup
+        // Syntax: CORTEX.COMPLETE(model_name, prompt_text)
         const query = `
-            SELECT SNOWFLAKE.CORTEX.COMPLETE(
-                ?,
-                ARRAY_CONSTRUCT(
-                    OBJECT_CONSTRUCT('role', 'system', 'content', 'You are a helpful AI assistant integrated with Snowflake Cortex.'),
-                    OBJECT_CONSTRUCT('role', 'user', 'content', ?)
-                )
-            ) AS response
+            SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?) AS response
         `;
 
         // Execute the query
         const result = await executeQuery(
             connection,
             query,
-            [agent, message]
+            [agent, fullPrompt]
         );
 
         // Extract the response
