@@ -319,62 +319,44 @@ class VoiceCortexApp {
     }
 
     async sendToCortexAgent(message) {
-        // This is a placeholder for the actual Snowflake Cortex Agent API call
-        // In a production environment, this would be handled by a backend server
-        // due to CORS and security considerations
-
         const { account, username, password, warehouse, database, schema, agent } = this.settings;
 
-        // Simulate API call for demonstration
-        // In production, you would use the Snowflake SDK or REST API through a backend
-        return new Promise((resolve, reject) => {
-            setTimeout(() => {
-                // Simulated response
-                const responses = [
-                    "I understand your request. How can I help you further?",
-                    "That's an interesting question. Let me process that for you.",
-                    "I've analyzed your input and here's what I found...",
-                    "Based on your request, I can provide the following information...",
-                    "I'm here to help. Could you provide more details?"
-                ];
-
-                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-
-                // Check if settings are configured
-                if (!account || !username) {
-                    reject(new Error('Snowflake configuration incomplete. Please check your settings.'));
-                } else {
-                    resolve(`[Demo Mode] ${randomResponse}\n\nNote: This is a simulated response. To connect to a real Snowflake Cortex Agent, you need to set up a backend server with the Snowflake SDK. Your message was: "${message}"`);
-                }
-            }, 1000);
-        });
-
-        /* Production code would look like this:
-        const response = await fetch('/api/cortex-agent', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                account,
-                username,
-                password,
-                warehouse,
-                database,
-                schema,
-                agent,
-                message,
-                conversation: this.conversation
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
+        // Validate settings
+        if (!account || !username || !agent) {
+            throw new Error('Snowflake configuration incomplete. Please check your settings.');
         }
 
-        const data = await response.json();
-        return data.response;
-        */
+        try {
+            // Call backend API
+            const response = await fetch('/api/cortex-agent', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    account,
+                    username,
+                    password,
+                    warehouse,
+                    database,
+                    schema,
+                    agent,
+                    message,
+                    conversation: this.conversation
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.response;
+        } catch (error) {
+            console.error('Error calling Cortex Agent API:', error);
+            throw error;
+        }
     }
 
     addMessage(type, text) {

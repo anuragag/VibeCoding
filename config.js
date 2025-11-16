@@ -4,7 +4,7 @@ export const config = {
     api: {
         // Set to true to use demo mode (simulated responses)
         // Set to false to use actual Snowflake Cortex backend
-        demoMode: true,
+        demoMode: false,
 
         // Backend server URL (when not in demo mode)
         serverUrl: 'http://localhost:3000',
