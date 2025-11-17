@@ -44,15 +44,23 @@ class VoiceCortexApp {
         this.warehouseInput = document.getElementById('warehouseInput');
         this.databaseInput = document.getElementById('databaseInput');
         this.schemaInput = document.getElementById('schemaInput');
-        this.agentInput = document.getElementById('agentInput');
+        this.agentSelect = document.getElementById('agentSelect');
+        this.agentInfo = document.getElementById('agentInfo');
+        this.refreshAgents = document.getElementById('refreshAgents');
         this.languageSelect = document.getElementById('languageSelect');
 
         // Action buttons
         this.clearBtn = document.getElementById('clearBtn');
         this.stopBtn = document.getElementById('stopBtn');
 
+        // Available agents list
+        this.availableAgents = [];
+
         // Populate settings if they exist
         this.populateSettings();
+
+        // Load agents list
+        this.loadAgentsList();
     }
 
     initSpeechRecognition() {
@@ -205,6 +213,10 @@ class VoiceCortexApp {
         this.closeSettings.addEventListener('click', () => this.closeSettingsModal());
         this.cancelSettings.addEventListener('click', () => this.closeSettingsModal());
         this.saveSettings.addEventListener('click', () => this.saveSettingsData());
+
+        // Agent selection and refresh
+        this.refreshAgents.addEventListener('click', () => this.loadAgentsList(true));
+        this.agentSelect.addEventListener('change', () => this.updateAgentInfo());
 
         // Action buttons
         this.clearBtn.addEventListener('click', () => this.clearConversation());
@@ -420,8 +432,9 @@ class VoiceCortexApp {
         this.warehouseInput.value = this.settings.warehouse || 'COMPUTE_WH';
         this.databaseInput.value = this.settings.database || 'CORTEX_DB';
         this.schemaInput.value = this.settings.schema || 'AGENTS';
-        this.agentInput.value = this.settings.agent || 'MY_AGENT';
+        this.agentSelect.value = this.settings.agent || 'mistral-large';
         this.languageSelect.value = this.settings.language || 'en-US';
+        this.updateAgentInfo();
     }
 
     saveSettingsData() {
@@ -432,7 +445,7 @@ class VoiceCortexApp {
             warehouse: this.warehouseInput.value.trim() || 'COMPUTE_WH',
             database: this.databaseInput.value.trim() || 'CORTEX_DB',
             schema: this.schemaInput.value.trim() || 'AGENTS',
-            agent: this.agentInput.value.trim() || 'MY_AGENT',
+            agent: this.agentSelect.value || 'mistral-large',
             language: this.languageSelect.value
         };
 
@@ -463,9 +476,145 @@ class VoiceCortexApp {
             warehouse: 'COMPUTE_WH',
             database: 'CORTEX_DB',
             schema: 'AGENTS',
-            agent: 'MY_AGENT',
+            agent: 'mistral-large',
             language: 'en-US'
         };
+    }
+
+    async loadAgentsList(forceRefresh = false) {
+        // Show loading state
+        this.refreshAgents.classList.add('loading');
+        this.agentSelect.innerHTML = '<option value="">Loading agents...</option>';
+
+        try {
+            const response = await fetch('/api/list-agents', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    account: this.accountInput.value.trim(),
+                    username: this.usernameInput.value.trim(),
+                    password: this.passwordInput.value,
+                    warehouse: this.warehouseInput.value.trim() || 'COMPUTE_WH',
+                    database: this.databaseInput.value.trim() || 'CORTEX_DB',
+                    schema: this.schemaInput.value.trim() || 'AGENTS'
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch agents: ${response.status}`);
+            }
+
+            const data = await response.json();
+            this.availableAgents = data.agents || [];
+
+            // Clear and populate dropdown
+            this.agentSelect.innerHTML = '';
+
+            // Group by type
+            const models = this.availableAgents.filter(a => a.type === 'model');
+            const customAgents = this.availableAgents.filter(a => a.type !== 'model');
+
+            // Add recommended models first
+            const recommended = models.filter(a => a.recommended);
+            if (recommended.length > 0) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = '⭐ Recommended Models';
+                recommended.forEach(agent => {
+                    const option = document.createElement('option');
+                    option.value = agent.name;
+                    option.textContent = `${agent.name} (${agent.provider})`;
+                    option.dataset.agent = JSON.stringify(agent);
+                    optgroup.appendChild(option);
+                });
+                this.agentSelect.appendChild(optgroup);
+            }
+
+            // Add other models
+            const otherModels = models.filter(a => !a.recommended);
+            if (otherModels.length > 0) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = 'Other Models';
+                otherModels.forEach(agent => {
+                    const option = document.createElement('option');
+                    option.value = agent.name;
+                    option.textContent = `${agent.name} (${agent.provider})`;
+                    option.dataset.agent = JSON.stringify(agent);
+                    optgroup.appendChild(option);
+                });
+                this.agentSelect.appendChild(optgroup);
+            }
+
+            // Add custom agents if any
+            if (customAgents.length > 0) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = 'Custom Agents';
+                customAgents.forEach(agent => {
+                    const option = document.createElement('option');
+                    option.value = agent.name;
+                    option.textContent = `${agent.name} (${agent.type})`;
+                    option.dataset.agent = JSON.stringify(agent);
+                    optgroup.appendChild(option);
+                });
+                this.agentSelect.appendChild(optgroup);
+            }
+
+            // Restore previous selection if it exists
+            if (this.settings.agent) {
+                this.agentSelect.value = this.settings.agent;
+            }
+
+            this.updateAgentInfo();
+
+            if (forceRefresh) {
+                this.showSuccess(`Loaded ${this.availableAgents.length} agents`);
+            }
+
+        } catch (error) {
+            console.error('Error loading agents:', error);
+            this.agentSelect.innerHTML = '<option value="mistral-large">mistral-large (Fallback)</option>';
+            if (forceRefresh) {
+                this.showError('Failed to load agents list');
+            }
+        } finally {
+            this.refreshAgents.classList.remove('loading');
+        }
+    }
+
+    updateAgentInfo() {
+        const selectedOption = this.agentSelect.selectedOptions[0];
+        if (!selectedOption || !selectedOption.dataset.agent) {
+            this.agentInfo.classList.remove('show');
+            return;
+        }
+
+        try {
+            const agent = JSON.parse(selectedOption.dataset.agent);
+            let infoHTML = '';
+
+            if (agent.description) {
+                infoHTML += `<div class="agent-detail">${agent.description}</div>`;
+            }
+
+            if (agent.provider) {
+                infoHTML += `<div class="agent-detail"><span class="agent-badge">${agent.provider}</span>`;
+                if (agent.size) {
+                    infoHTML += `<span class="agent-badge">${agent.size}</span>`;
+                }
+                infoHTML += `</div>`;
+            }
+
+            if (infoHTML) {
+                this.agentInfo.innerHTML = infoHTML;
+                this.agentInfo.classList.add('show');
+            } else {
+                this.agentInfo.classList.remove('show');
+            }
+        } catch (error) {
+            console.error('Error parsing agent data:', error);
+            this.agentInfo.classList.remove('show');
+        }
     }
 
     validateSettings() {

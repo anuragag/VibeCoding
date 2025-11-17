@@ -191,6 +191,173 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// List available Cortex models and agents
+app.post('/api/list-agents', async (req, res) => {
+    try {
+        const { account, username, password, warehouse, database, schema } = req.body;
+
+        // Pre-defined Cortex models available in Snowflake
+        const predefinedModels = [
+            {
+                name: 'mistral-large',
+                type: 'model',
+                provider: 'Mistral AI',
+                description: 'Best quality, complex reasoning tasks',
+                size: 'Large',
+                recommended: true
+            },
+            {
+                name: 'mistral-large2',
+                type: 'model',
+                provider: 'Mistral AI',
+                description: 'Latest Mistral large model, improved performance',
+                size: 'Large',
+                recommended: true
+            },
+            {
+                name: 'mixtral-8x7b',
+                type: 'model',
+                provider: 'Mistral AI',
+                description: 'Good balance of speed and quality',
+                size: 'Medium'
+            },
+            {
+                name: 'llama3-70b',
+                type: 'model',
+                provider: 'Meta',
+                description: 'High quality responses',
+                size: 'Large'
+            },
+            {
+                name: 'llama3-8b',
+                type: 'model',
+                provider: 'Meta',
+                description: 'Fast responses, good for simple tasks',
+                size: 'Small'
+            },
+            {
+                name: 'llama3.1-70b',
+                type: 'model',
+                provider: 'Meta',
+                description: 'Latest Llama 3.1, improved capabilities',
+                size: 'Large'
+            },
+            {
+                name: 'llama3.1-8b',
+                type: 'model',
+                provider: 'Meta',
+                description: 'Latest Llama 3.1, efficient and fast',
+                size: 'Small'
+            },
+            {
+                name: 'mistral-7b',
+                type: 'model',
+                provider: 'Mistral AI',
+                description: 'Lightweight, cost-effective',
+                size: 'Small'
+            },
+            {
+                name: 'gemma-7b',
+                type: 'model',
+                provider: 'Google',
+                description: 'Google\'s open model',
+                size: 'Small'
+            },
+            {
+                name: 'reka-flash',
+                type: 'model',
+                provider: 'Reka AI',
+                description: 'Very fast inference',
+                size: 'Medium'
+            },
+            {
+                name: 'snowflake-arctic',
+                type: 'model',
+                provider: 'Snowflake',
+                description: 'Snowflake\'s enterprise-grade model',
+                size: 'Large'
+            }
+        ];
+
+        const agents = [...predefinedModels];
+
+        // If credentials provided, try to query for custom Cortex Agents
+        if (account && username && password) {
+            try {
+                const connection = await getSnowflakeConnection({
+                    account,
+                    username,
+                    password,
+                    warehouse: warehouse || 'COMPUTE_WH',
+                    database: database || 'CORTEX_DB',
+                    schema: schema || 'AGENTS'
+                });
+
+                // Query for Cortex Search Services (one type of Cortex Agent)
+                try {
+                    const searchServices = await executeQuery(
+                        connection,
+                        'SHOW CORTEX SEARCH SERVICES'
+                    );
+
+                    if (searchServices && searchServices.length > 0) {
+                        searchServices.forEach(service => {
+                            agents.push({
+                                name: service.name,
+                                type: 'search_service',
+                                provider: 'Custom',
+                                description: `Cortex Search Service in ${service.database_name}.${service.schema_name}`,
+                                size: 'Custom'
+                            });
+                        });
+                    }
+                } catch (err) {
+                    console.log('No Cortex Search Services found or permission denied:', err.message);
+                }
+
+                // Query for custom functions that might be Cortex Agents
+                try {
+                    const functions = await executeQuery(
+                        connection,
+                        `SHOW USER FUNCTIONS LIKE '%CORTEX%' IN SCHEMA ${schema || 'AGENTS'}`
+                    );
+
+                    if (functions && functions.length > 0) {
+                        functions.forEach(func => {
+                            agents.push({
+                                name: func.name,
+                                type: 'function',
+                                provider: 'Custom',
+                                description: `Custom Cortex function`,
+                                size: 'Custom'
+                            });
+                        });
+                    }
+                } catch (err) {
+                    console.log('No custom Cortex functions found:', err.message);
+                }
+
+            } catch (connError) {
+                console.log('Could not query for custom agents:', connError.message);
+                // Continue with just predefined models
+            }
+        }
+
+        res.json({
+            success: true,
+            agents: agents,
+            count: agents.length
+        });
+
+    } catch (error) {
+        console.error('Error listing agents:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // Test endpoint for Cortex Agent connectivity
 app.post('/api/test-connection', async (req, res) => {
     try {
